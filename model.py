@@ -1,0 +1,452 @@
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from transformers import (
+    AutoTokenizer, AutoModelForSequenceClassification,
+    TrainingArguments, Trainer, EarlyStoppingCallback
+)
+from datasets import load_dataset
+import pandas as pd
+import numpy as np
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, confusion_matrix
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+import seaborn as sns
+from tqdm import tqdm
+import warnings
+warnings.filterwarnings('ignore')
+
+class MedHalluDataset(Dataset):
+    """Custom Dataset class for MedHallu data"""
+    
+    def __init__(self, texts, labels, tokenizer, max_length=512):
+        self.texts = texts
+        self.labels = labels
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+    
+    def __len__(self):
+        return len(self.texts)
+    
+    def __getitem__(self, idx):
+        text = str(self.texts[idx])
+        label = self.labels[idx]
+        
+        # Tokenize the text
+        encoding = self.tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+        
+        return {
+            'input_ids': encoding['input_ids'].flatten(),
+            'attention_mask': encoding['attention_mask'].flatten(),
+            'labels': torch.tensor(label, dtype=torch.long)
+        }
+
+class MedicalHallucinationDetector:
+    """Main class for medical hallucination detection"""
+    
+    def __init__(self, model_name="emilyalsentzer/Bio_ClinicalBERT", max_length=512):
+        """
+        Initialize the detector with a pre-trained medical BERT model
+        
+        Args:
+            model_name: Name of the pre-trained model to use
+            max_length: Maximum sequence length for tokenization
+        """
+        self.model_name = model_name
+        self.max_length = max_length
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Add padding token if not present
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+    
+    def load_and_preprocess_data(self):
+        """
+        Load and preprocess the MedHallu dataset
+        
+        Returns:
+            Tuple of (train_texts, train_labels, val_texts, val_labels, test_texts, test_labels)
+        """
+        print("Loading MedHallu dataset...")
+        
+        # Load both splits of the dataset
+        try:
+            labeled_data = load_dataset("UTAustin-AIHealth/MedHallu", "pqa_labeled")
+            artificial_data = load_dataset("UTAustin-AIHealth/MedHallu", "pqa_artificial")
+        except Exception as e:
+            print(f"Error loading dataset: {e}")
+            print("Creating mock data for demonstration...")
+            return self._create_mock_data()
+        
+        # Process labeled data (high quality)
+        labeled_samples = self._process_dataset_split(labeled_data['train'])
+        
+        # Process artificial data (larger volume)
+        artificial_samples = self._process_dataset_split(artificial_data['train'])
+        
+        # Combine datasets
+        all_texts = labeled_samples['texts'] + artificial_samples['texts']
+        all_labels = labeled_samples['labels'] + artificial_samples['labels']
+        
+        # Split into train/val/test
+        # First split: separate test set (20%)
+        train_val_texts, test_texts, train_val_labels, test_labels = train_test_split(
+            all_texts, all_labels, test_size=0.2, random_state=42, stratify=all_labels
+        )
+        
+        # Second split: separate train and validation (80% train, 20% val of remaining)
+        train_texts, val_texts, train_labels, val_labels = train_test_split(
+            train_val_texts, train_val_labels, test_size=0.25, random_state=42, stratify=train_val_labels
+        )
+        
+        print(f"Dataset split - Train: {len(train_texts)}, Val: {len(val_texts)}, Test: {len(test_texts)}")
+        print(f"Label distribution - Train: {np.bincount(train_labels)}")
+        
+        return train_texts, train_labels, val_texts, val_labels, test_texts, test_labels
+    
+    def _process_dataset_split(self, dataset_split):
+        """
+        Process a single split of the dataset
+        
+        Args:
+            dataset_split: A single split from the MedHallu dataset
+            
+        Returns:
+            Dictionary with processed texts and labels
+        """
+        texts = []
+        labels = []
+        
+        for sample in dataset_split:
+            question = sample.get('question', '')
+            ground_truth = sample.get('ground_truth_answer', sample.get('correct_answer', ''))
+            hallucinated = sample.get('hallucinated_answer', sample.get('incorrect_answer', ''))
+            
+            # Create input format: "Question: ... Answer: ..."
+            # Positive sample (correct answer - not hallucination)
+            correct_text = f"Question: {question} Answer: {ground_truth}"
+            texts.append(correct_text)
+            labels.append(0)  # 0 = not hallucination
+            
+            # Negative sample (hallucinated answer)
+            hallucinated_text = f"Question: {question} Answer: {hallucinated}"
+            texts.append(hallucinated_text)
+            labels.append(1)  # 1 = hallucination
+        
+        return {'texts': texts, 'labels': labels}
+    
+    def _create_mock_data(self):
+        """Create mock data for demonstration if dataset loading fails"""
+        print("Creating mock medical QA data...")
+        
+        mock_samples = [
+            {
+                'question': 'What is the most common cause of myocardial infarction?',
+                'correct': 'Coronary artery occlusion due to atherosclerotic plaque rupture and thrombosis',
+                'hallucinated': 'Viral infection of the heart muscle leading to inflammatory damage'
+            },
+            {
+                'question': 'What is the first-line treatment for type 2 diabetes?',
+                'correct': 'Metformin, along with lifestyle modifications including diet and exercise',
+                'hallucinated': 'Immediate insulin therapy is always required for all type 2 diabetes patients'
+            },
+            {
+                'question': 'What are the symptoms of pneumonia?',
+                'correct': 'Cough, fever, chest pain, shortness of breath, and sometimes chills',
+                'hallucinated': 'Pneumonia always presents with severe headaches and vision problems'
+            }
+        ] * 100  # Repeat to create more samples
+        
+        texts, labels = [], []
+        for sample in mock_samples:
+            # Correct answer
+            texts.append(f"Question: {sample['question']} Answer: {sample['correct']}")
+            labels.append(0)
+            # Hallucinated answer
+            texts.append(f"Question: {sample['question']} Answer: {sample['hallucinated']}")
+            labels.append(1)
+        
+        # Split the mock data
+        train_texts, test_texts, train_labels, test_labels = train_test_split(
+            texts, labels, test_size=0.3, random_state=42
+        )
+        train_texts, val_texts, train_labels, val_labels = train_test_split(
+            train_texts, train_labels, test_size=0.2, random_state=42
+        )
+        
+        return train_texts, train_labels, val_texts, val_labels, test_texts, test_labels
+    
+    def create_data_loaders(self, train_texts, train_labels, val_texts, val_labels, batch_size=16):
+        """
+        Create DataLoader objects for training and validation
+        
+        Args:
+            train_texts, train_labels: Training data
+            val_texts, val_labels: Validation data
+            batch_size: Batch size for training
+            
+        Returns:
+            Tuple of (train_loader, val_loader)
+        """
+        train_dataset = MedHalluDataset(train_texts, train_labels, self.tokenizer, self.max_length)
+        val_dataset = MedHalluDataset(val_texts, val_labels, self.tokenizer, self.max_length)
+        
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        
+        return train_loader, val_loader
+    
+    def initialize_model(self):
+        """Initialize the classification model"""
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            self.model_name,
+            num_labels=2,  # Binary classification
+            problem_type="single_label_classification"
+        )
+        
+        # Resize token embeddings if necessary
+        self.model.resize_token_embeddings(len(self.tokenizer))
+        self.model.to(self.device)
+    
+    def compute_metrics(self, eval_pred):
+        """Compute evaluation metrics for the trainer"""
+        predictions, labels = eval_pred
+        predictions = np.argmax(predictions, axis=1)
+        
+        accuracy = accuracy_score(labels, predictions)
+        precision, recall, f1, _ = precision_recall_fscore_support(labels, predictions, average='binary')
+        
+        return {
+            'accuracy': accuracy,
+            'f1': f1,
+            'precision': precision,
+            'recall': recall
+        }
+    
+    def train_model(self, train_texts, train_labels, val_texts, val_labels, 
+                   output_dir="./med_hallucination_model", epochs=3, batch_size=16):
+        """
+        Train the hallucination detection model
+        
+        Args:
+            train_texts, train_labels: Training data
+            val_texts, val_labels: Validation data
+            output_dir: Directory to save the model
+            epochs: Number of training epochs
+            batch_size: Training batch size
+        """
+        print("Initializing model...")
+        self.initialize_model()
+        
+        # Create datasets
+        train_dataset = MedHalluDataset(train_texts, train_labels, self.tokenizer, self.max_length)
+        val_dataset = MedHalluDataset(val_texts, val_labels, self.tokenizer, self.max_length)
+        
+        # Define training arguments
+        training_args = TrainingArguments(
+            output_dir=output_dir,
+            num_train_epochs=epochs,
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
+            warmup_steps=500,
+            weight_decay=0.01,
+            logging_dir=f'{output_dir}/logs',
+            logging_steps=10,
+            eval_strategy="steps",
+            eval_steps=100,
+            save_strategy="steps",
+            save_steps=500,
+            load_best_model_at_end=True,
+            metric_for_best_model="f1",
+            greater_is_better=True,
+            report_to=None  # Disable wandb/tensorboard logging
+        )
+        
+        # Create trainer
+        trainer = Trainer(
+            model=self.model,
+            args=training_args,
+            train_dataset=train_dataset,
+            eval_dataset=val_dataset,
+            compute_metrics=self.compute_metrics,
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
+        )
+        
+        # Train the model
+        print("Starting training...")
+        trainer.train()
+        
+        # Save the final model
+        trainer.save_model(output_dir)
+        self.tokenizer.save_pretrained(output_dir)
+        
+        print(f"Model saved to {output_dir}")
+        
+        return trainer
+    
+    def evaluate_model(self, test_texts, test_labels, model_path=None):
+        """
+        Evaluate the trained model on test data
+        
+        Args:
+            test_texts, test_labels: Test data
+            model_path: Path to saved model (if None, uses current model)
+            
+        Returns:
+            Dictionary of evaluation metrics
+        """
+        if model_path:
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+            self.model.to(self.device)
+        
+        # Create test dataset
+        test_dataset = MedHalluDataset(test_texts, test_labels, self.tokenizer, self.max_length)
+        test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+        
+        # Evaluate
+        self.model.eval()
+        all_predictions = []
+        all_labels = []
+        all_probs = []
+        
+        with torch.no_grad():
+            for batch in tqdm(test_loader, desc="Evaluating"):
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
+                labels = batch['labels'].to(self.device)
+                
+                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+                predictions = torch.argmax(outputs.logits, dim=-1)
+                probs = torch.softmax(outputs.logits, dim=-1)
+                
+                all_predictions.extend(predictions.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+                all_probs.extend(probs.cpu().numpy()[:, 1])  # Probability of hallucination
+        
+        # Calculate metrics
+        accuracy = accuracy_score(all_labels, all_predictions)
+        precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='binary')
+        auc = roc_auc_score(all_labels, all_probs)
+        
+        metrics = {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'f1': f1,
+            'auc': auc
+        }
+        
+        # Print results
+        print("\n=== Evaluation Results ===")
+        for metric, value in metrics.items():
+            print(f"{metric.capitalize()}: {value:.4f}")
+        
+        # Plot confusion matrix
+        self._plot_confusion_matrix(all_labels, all_predictions)
+        
+        return metrics, all_predictions, all_probs
+    
+    def _plot_confusion_matrix(self, y_true, y_pred):
+        """Plot confusion matrix"""
+        cm = confusion_matrix(y_true, y_pred)
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=['Not Hallucination', 'Hallucination'],
+                   yticklabels=['Not Hallucination', 'Hallucination'])
+        plt.title('Confusion Matrix')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.tight_layout()
+        plt.show()
+    
+    def predict_single(self, question, answer, return_probability=True):
+        """
+        Predict whether a single answer is a hallucination
+        
+        Args:
+            question: Medical question
+            answer: Answer to evaluate
+            return_probability: Whether to return probability score
+            
+        Returns:
+            Prediction (and probability if requested)
+        """
+        if self.model is None:
+            raise ValueError("Model not trained or loaded!")
+        
+        text = f"Question: {question} Answer: {answer}"
+        
+        # Tokenize
+        encoding = self.tokenizer(
+            text,
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+        
+        # Move to device
+        input_ids = encoding['input_ids'].to(self.device)
+        attention_mask = encoding['attention_mask'].to(self.device)
+        
+        # Predict
+        self.model.eval()
+        with torch.no_grad():
+            outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+            prediction = torch.argmax(outputs.logits, dim=-1).item()
+            probs = torch.softmax(outputs.logits, dim=-1)
+            hallucination_prob = probs[0][1].item()
+        
+        result = {
+            'is_hallucination': bool(prediction),
+            'confidence': hallucination_prob if prediction else (1 - hallucination_prob)
+        }
+        
+        if return_probability:
+            result['hallucination_probability'] = hallucination_prob
+        
+        return result
+
+def main():
+    """Main execution function"""
+    # Initialize detector
+    detector = MedicalHallucinationDetector()
+    
+    # Load and preprocess data
+    train_texts, train_labels, val_texts, val_labels, test_texts, test_labels = detector.load_and_preprocess_data()
+    
+    # Train the model
+    trainer = detector.train_model(
+        train_texts, train_labels, 
+        val_texts, val_labels,
+        epochs=2,  # Reduced for demo
+        batch_size=8   # Reduced for memory efficiency
+    )
+    
+    # Evaluate the model
+    metrics, predictions, probabilities = detector.evaluate_model(test_texts, test_labels)
+    
+    # Test single prediction
+    sample_question = "What is the main cause of heart attacks?"
+    correct_answer = "Coronary artery blockage due to atherosclerotic plaque"
+    hallucinated_answer = "Heart attacks are primarily caused by eating too much sugar"
+    
+    print("\n=== Single Prediction Examples ===")
+    
+    result1 = detector.predict_single(sample_question, correct_answer)
+    print(f"Correct answer - Is hallucination: {result1['is_hallucination']}, Confidence: {result1['confidence']:.3f}")
+    
+    result2 = detector.predict_single(sample_question, hallucinated_answer)
+    print(f"Hallucinated answer - Is hallucination: {result2['is_hallucination']}, Confidence: {result2['confidence']:.3f}")
+
+if __name__ == "__main__":
+    main()
