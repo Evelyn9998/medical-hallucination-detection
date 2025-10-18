@@ -22,19 +22,49 @@ A deep learning model for detecting hallucinations in medical question-answering
 
 ## 🛠️ Installation
 
+### Option 1: Using requirements.txt (Recommended)
 ```bash
-pip install torch transformers datasets pandas numpy scikit-learn matplotlib seaborn tqdm
+pip install -r requirements.txt
 ```
 
+### Option 2: Manual Installation
+```bash
+pip install torch>=2.0.0 transformers>=4.21.0 datasets>=2.4.0 pandas>=1.5.0 numpy>=1.21.0 scikit-learn>=1.1.0 matplotlib>=3.5.0 seaborn>=0.11.0 tqdm>=4.64.0
+```
+
+### Hardware Requirements
+- **Minimum**: 4GB RAM (for inference)
+- **Recommended**: 8GB+ RAM, CUDA-compatible GPU (for training)
+- **Storage**: 3GB+ free space (including model storage)
+
 ## 🚀 Quick Start
+
+### **Option 1: Use Pre-trained Model (Recommended)**
 
 ```python
 from model import MedicalHallucinationDetector
 
-# Initialize detector (Bio_ClinicalBERT, max_length=512)
+# Initialize detector
 detector = MedicalHallucinationDetector()
 
-# Load and preprocess data (1000 expert samples)
+# Make predictions with pre-trained model
+result = detector.predict_single(
+    "What causes diabetes?",
+    "Eating too much sugar"
+)
+print(f"Is hallucination: {result['is_hallucination']}")
+print(f"Confidence: {result['confidence']:.3f}")
+```
+
+### **Option 2: Train Custom Model**
+
+```python
+from model import MedicalHallucinationDetector
+
+# Initialize detector
+detector = MedicalHallucinationDetector()
+
+# Load and preprocess your data (1000 expert samples)
 train_texts, train_labels, val_texts, val_labels, test_texts, test_labels = detector.load_and_preprocess_data(labeled_samples=1000)
 
 # Train model (epochs=3, batch_size=8, lr=2e-5)
@@ -44,9 +74,25 @@ trainer = detector.train_model(
     epochs=3, batch_size=8
 )
 
-# Make predictions
-result = detector.predict_single("What causes diabetes?", "Eating too much sugar")
-print(f"Is hallucination: {result['is_hallucination']}")
+# Evaluate performance
+metrics = detector.evaluate_model(test_texts, test_labels)
+print(f"Accuracy: {metrics['accuracy']:.3f}")
+print(f"F1-Score: {metrics['f1']:.3f}")
+```
+
+### **Option 3: Batch Prediction**
+
+```python
+# Predict multiple QA pairs at once
+qa_pairs = [
+    ("What causes diabetes?", "Diabetes is caused by eating too much sugar"),
+    ("What is hypertension?", "High blood pressure that requires medication"),
+    ("How to treat fever?", "Take aspirin and rest")
+]
+
+results = detector.predict_batch(qa_pairs)
+for i, result in enumerate(results):
+    print(f"Pair {i+1}: {'Hallucination' if result['is_hallucination'] else 'Not Hallucination'} (Confidence: {result['confidence']:.3f})")
 ```
 
 ## 📁 Project Structure
@@ -55,6 +101,7 @@ print(f"Is hallucination: {result['is_hallucination']}")
 medical-hallucination-detection/
 ├── model.py                    # Main model implementation with MedicalHallucinationDetector class
 ├── test_model.py              # Testing utilities with MedicalHallucinationTester class
+├── requirements.txt           # Python dependencies and versions
 ├── Load_MedHallu_Dataset.ipynb # Data exploration and preprocessing notebook
 ├── README.md                  # This file
 ├── .gitignore                # Git ignore rules
