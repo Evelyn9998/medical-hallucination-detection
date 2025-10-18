@@ -290,35 +290,34 @@ class MedicalHallucinationDetector:
         train_dataset = MedHalluDataset(train_texts, train_labels, self.tokenizer, self.max_length)
         val_dataset = MedHalluDataset(val_texts, val_labels, self.tokenizer, self.max_length)
         
-        # Define optimized training arguments
+        # Define memory-efficient training arguments
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=epochs,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
-            learning_rate=2e-5,  # Optimized learning rate for better convergence
-            warmup_steps=300,  # Reduced warmup steps for faster training
-            weight_decay=0.1,  # Increased weight decay for better regularization
+            learning_rate=3e-5,  # Slightly higher learning rate for faster convergence
+            warmup_steps=50,  # Reduced warmup steps for faster training
+            weight_decay=0.01,  # Reduced weight decay for memory efficiency
             logging_dir=f'{output_dir}/logs',
-            logging_steps=20,  # Reduced logging frequency for faster training
-            eval_strategy="steps",
-            eval_steps=50,  # More frequent evaluation for better monitoring
-            save_strategy="steps",
-            save_steps=200,  # More frequent saving
+            logging_steps=10,  # Reduced logging frequency for faster training
+            eval_strategy="epoch",  # Evaluate per epoch instead of steps
+            save_strategy="epoch",  # Save per epoch instead of steps
             load_best_model_at_end=True,
             metric_for_best_model="f1",
             greater_is_better=True,
-            gradient_accumulation_steps=2,  # Gradient accumulation for larger effective batch size
+            gradient_accumulation_steps=1,  # No gradient accumulation for memory efficiency
             max_grad_norm=1.0,  # Gradient clipping to prevent exploding gradients
-            lr_scheduler_type="cosine",  # Cosine learning rate scheduler for better convergence
+            lr_scheduler_type="linear",  # Linear scheduler for simplicity
             report_to=None,  # Disable wandb/tensorboard logging
             fp16=False,  # Disabled for MPS compatibility (Apple Silicon)
+            dataloader_num_workers=0,  # Disable multiprocessing for memory efficiency
         )
         
-        # Create trainer with enhanced early stopping and better monitoring
+        # Create trainer with memory-efficient early stopping
         early_stopping_callback = EarlyStoppingCallback(
-            early_stopping_patience=5,  # Increased patience for better training
-            early_stopping_threshold=0.001  # Minimum improvement threshold
+            early_stopping_patience=2,  # Reduced patience for faster training
+            early_stopping_threshold=0.01  # Higher threshold for memory efficiency
         )
 
         trainer = Trainer(
@@ -331,12 +330,13 @@ class MedicalHallucinationDetector:
         )
         
         # Train the model with progress monitoring
-        print("Starting optimized training...")
+        print("Starting memory-efficient training...")
         print(f"Training samples: {len(train_texts)}")
         print(f"Validation samples: {len(val_texts)}")
         print(f"Batch size: {batch_size}")
-        print(f"Learning rate: 2e-5")
-        print(f"Dropout rates: hidden=0.2, attention=0.2, classifier=0.3")
+        print(f"Learning rate: 3e-5")
+        print(f"Model: DistilBERT (memory efficient)")
+        print(f"Max sequence length: 256")
         print("-" * 60)
 
         trainer.train()
@@ -348,35 +348,36 @@ class MedicalHallucinationDetector:
         print(f"Model saved to {output_dir}")
 
         # Print training summary
-        self._print_training_summary(trainer)
+        self._print_memory_efficient_summary(trainer)
 
         return trainer
 
-    def _print_training_summary(self, trainer):
-        """Print a summary of training optimizations and tips"""
+    def _print_memory_efficient_summary(self, trainer):
+        """Print a summary of memory-efficient optimizations"""
         print("\n" + "="*60)
-        print("TRAINING OPTIMIZATION SUMMARY")
+        print("MEMORY-EFFICIENT TRAINING SUMMARY")
         print("="*60)
-        print("✓ Model Architecture Optimizations:")
-        print("  - Increased dropout rates (hidden: 0.2, attention: 0.2, classifier: 0.3)")
-        print("  - Enhanced regularization to prevent overfitting")
+        print("✓ Memory Optimizations:")
+        print("  - Using DistilBERT (smaller model) instead of Bio_ClinicalBERT")
+        print("  - Reduced sequence length to 256 tokens")
+        print("  - Smaller batch size (4) for lower memory usage")
+        print("  - Disabled multiprocessing in data loading")
         print()
-        print("✓ Training Parameter Optimizations:")
-        print("  - Optimized learning rate: 2e-5")
-        print("  - Cosine learning rate scheduler for better convergence")
-        print("  - Gradient clipping (max_norm=1.0) to prevent exploding gradients")
-        print("  - Mixed precision training (fp16) for faster training")
-        print("  - Gradient accumulation for larger effective batch size")
+        print("✓ Training Speed Optimizations:")
+        print("  - Reduced epochs to 3 for faster training")
+        print("  - Higher learning rate (3e-5) for faster convergence")
+        print("  - Linear learning rate scheduler for simplicity")
+        print("  - Reduced warmup steps to 50")
         print()
-        print("✓ Early Stopping Enhancements:")
-        print("  - Increased patience to 5 epochs")
-        print("  - Minimum improvement threshold: 0.001")
-        print("  - More frequent evaluation (every 50 steps)")
+        print("✓ Early Stopping Configuration:")
+        print("  - Patience: 2 epochs")
+        print("  - Threshold: 0.01")
+        print("  - Per-epoch evaluation for memory efficiency")
         print()
-        print("✓ Performance Improvements:")
-        print("  - Reduced logging frequency for faster training")
-        print("  - More frequent model saving for better checkpointing")
-        print("  - Enhanced monitoring and progress tracking")
+        print("✓ Resource Usage:")
+        print("  - No gradient accumulation (memory efficient)")
+        print("  - Reduced weight decay (0.01)")
+        print("  - Minimal logging for faster execution")
         print("="*60)
     
     def evaluate_model(self, test_texts, test_labels, model_path=None):
@@ -503,27 +504,27 @@ class MedicalHallucinationDetector:
         
         return result
 
-def main(labeled_samples=1000):
+def main(labeled_samples=200):
     """
     Main execution function
 
     Args:
         labeled_samples: Number of expert labeled samples to use
     """
-    # Initialize detector
-    detector = MedicalHallucinationDetector()
+    # Initialize detector with smaller model for memory efficiency
+    detector = MedicalHallucinationDetector(model_name="distilbert-base-uncased", max_length=256)
 
     # Load and preprocess data (only expert labeled data)
     train_texts, train_labels, val_texts, val_labels, test_texts, test_labels = detector.load_and_preprocess_data(
         labeled_samples=labeled_samples
     )
-    
-    # Train the model with optimized parameters
+
+    # Train the model with memory-efficient parameters
     trainer = detector.train_model(
         train_texts, train_labels,
         val_texts, val_labels,
-        epochs=5,  # More epochs for better training
-        batch_size=8   # Optimized batch size
+        epochs=3,  # Fewer epochs for faster training
+        batch_size=4   # Smaller batch size for memory efficiency
     )
     
     # Evaluate the model
