@@ -54,7 +54,7 @@ class MedicalHallucinationDetector:
     def __init__(self, model_name="emilyalsentzer/Bio_ClinicalBERT", max_length=512):
         """
         Initialize the detector with a pre-trained medical BERT model
-        
+
         Args:
             model_name: Name of the pre-trained model to use
             max_length: Maximum sequence length for tokenization
@@ -64,7 +64,7 @@ class MedicalHallucinationDetector:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = None
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
+
         # Add padding token if not present
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -124,32 +124,44 @@ class MedicalHallucinationDetector:
     def _process_dataset_split(self, dataset_split):
         """
         Process a single split of the dataset
-        
+
         Args:
             dataset_split: A single split from the MedHallu dataset
-            
+
         Returns:
             Dictionary with processed texts and labels
         """
         texts = []
         labels = []
-        
+
         for sample in dataset_split:
-            question = sample.get('question', '')
-            ground_truth = sample.get('ground_truth_answer', sample.get('correct_answer', ''))
-            hallucinated = sample.get('hallucinated_answer', sample.get('incorrect_answer', ''))
-            
+            # Use the actual field names from the MedHallu dataset
+            question = sample.get('Question', '')
+
+            # Get ground truth answer (correct answer)
+            ground_truth = sample.get('Ground Truth', '')
+
+            # Get hallucinated answer (incorrect answer)
+            hallucinated = sample.get('Hallucinated Answer', '')
+
+            # Skip samples with missing data
+            if not question or not ground_truth or not hallucinated:
+                continue
+
             # Create input format: "Question: ... Answer: ..."
             # Positive sample (correct answer - not hallucination)
-            correct_text = f"Question: {question} Answer: {ground_truth}"
-            texts.append(correct_text)
-            labels.append(0)  # 0 = not hallucination
-            
+            correct_text = f"Question: {question.strip()} Answer: {ground_truth.strip()}"
+            if correct_text.strip():
+                texts.append(correct_text)
+                labels.append(0)  # 0 = not hallucination
+
             # Negative sample (hallucinated answer)
-            hallucinated_text = f"Question: {question} Answer: {hallucinated}"
-            texts.append(hallucinated_text)
-            labels.append(1)  # 1 = hallucination
-        
+            hallucinated_text = f"Question: {question.strip()} Answer: {hallucinated.strip()}"
+            if hallucinated_text.strip():
+                texts.append(hallucinated_text)
+                labels.append(1)  # 1 = hallucination
+
+        print(f"Processed {len(texts)} samples ({labels.count(0)} correct, {labels.count(1)} hallucinated)")
         return {'texts': texts, 'labels': labels}
 
     def _sample_balanced(self, dataset_split, num_samples):
@@ -290,28 +302,30 @@ class MedicalHallucinationDetector:
         train_dataset = MedHalluDataset(train_texts, train_labels, self.tokenizer, self.max_length)
         val_dataset = MedHalluDataset(val_texts, val_labels, self.tokenizer, self.max_length)
         
-        # Define memory-efficient training arguments
+        # Define optimized training arguments for better performance
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=epochs,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
-            learning_rate=3e-5,  # Slightly higher learning rate for faster convergence
-            warmup_steps=50,  # Reduced warmup steps for faster training
-            weight_decay=0.01,  # Reduced weight decay for memory efficiency
+            learning_rate=2e-5,  # Optimal learning rate for BERT models
+            warmup_steps=100,  # Adequate warmup for stable training
+            weight_decay=0.01,  # Standard weight decay
             logging_dir=f'{output_dir}/logs',
-            logging_steps=10,  # Reduced logging frequency for faster training
-            eval_strategy="epoch",  # Evaluate per epoch instead of steps
-            save_strategy="epoch",  # Save per epoch instead of steps
+            logging_steps=20,  # Balanced logging frequency
+            eval_strategy="epoch",  # Evaluate per epoch
+            save_strategy="epoch",  # Save per epoch
             load_best_model_at_end=True,
             metric_for_best_model="f1",
             greater_is_better=True,
-            gradient_accumulation_steps=1,  # No gradient accumulation for memory efficiency
-            max_grad_norm=1.0,  # Gradient clipping to prevent exploding gradients
-            lr_scheduler_type="linear",  # Linear scheduler for simplicity
-            report_to=None,  # Disable wandb/tensorboard logging
-            fp16=False,  # Disabled for MPS compatibility (Apple Silicon)
-            dataloader_num_workers=0,  # Disable multiprocessing for memory efficiency
+            gradient_accumulation_steps=2,  # For larger effective batch size
+            max_grad_norm=1.0,  # Gradient clipping
+            lr_scheduler_type="linear",  # Linear scheduler with warmup
+            report_to=None,  # Disable external logging
+            fp16=torch.cuda.is_available(),  # Use mixed precision if CUDA available
+            dataloader_num_workers=2 if torch.cuda.is_available() else 0,  # Optimize for available hardware
+            save_total_limit=2,  # Keep only best 2 models
+            seed=42,  # For reproducibility
         )
         
         # Create trainer with memory-efficient early stopping
@@ -511,8 +525,8 @@ def main(labeled_samples=200):
     Args:
         labeled_samples: Number of expert labeled samples to use
     """
-    # Initialize detector with smaller model for memory efficiency
-    detector = MedicalHallucinationDetector(model_name="distilbert-base-uncased", max_length=256)
+    # Initialize detector with medical domain model for better performance
+    detector = MedicalHallucinationDetector(model_name="emilyalsentzer/Bio_ClinicalBERT", max_length=512)
 
     # Load and preprocess data (only expert labeled data)
     train_texts, train_labels, val_texts, val_labels, test_texts, test_labels = detector.load_and_preprocess_data(
