@@ -308,7 +308,7 @@ class MedicalHallucinationDetector:
             num_train_epochs=epochs,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
-            learning_rate=3e-5,  # Optimal learning rate for BERT models
+            learning_rate=2e-5,  # Optimal learning rate for BERT models
             warmup_steps=100,  # Adequate warmup for stable training
             weight_decay=0.01,  # Standard weight decay
             logging_dir=f'{output_dir}/logs',
@@ -379,7 +379,7 @@ class MedicalHallucinationDetector:
         print()
         print("✓ Training Optimizations:")
         print("  - Configurable epochs (default: 3) for optimal training")
-        print("  - Optimal learning rate (3e-5) for BERT convergence")
+        print("  - Optimal learning rate (2e-5) for BERT convergence")
         print("  - Linear learning rate scheduler with warmup")
         print("  - Warmup steps (100) for training stability")
         print()
