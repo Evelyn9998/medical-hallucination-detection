@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+import os
 from transformers import (
     AutoTokenizer, AutoModelForSequenceClassification, AutoConfig,
     TrainingArguments, Trainer, EarlyStoppingCallback,
@@ -51,13 +52,14 @@ class MedHalluDataset(Dataset):
 class MedicalHallucinationDetector:
     """Main class for medical hallucination detection"""
     
-    def __init__(self, model_name="emilyalsentzer/Bio_ClinicalBERT", max_length=512):
+    def __init__(self, model_name="emilyalsentzer/Bio_ClinicalBERT", max_length=512, auto_load=True):
         """
         Initialize the detector with a pre-trained medical BERT model
 
         Args:
             model_name: Name of the pre-trained model to use
             max_length: Maximum sequence length for tokenization
+            auto_load: Whether to automatically load pre-trained model if available
         """
         self.model_name = model_name
         self.max_length = max_length
@@ -68,7 +70,32 @@ class MedicalHallucinationDetector:
         # Add padding token if not present
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-    
+
+        # Auto-load pre-trained model if available
+        if auto_load:
+            self._auto_load_model()
+
+    def _auto_load_model(self, model_path="./med_hallucination_model"):
+        """
+        Automatically load pre-trained model if it exists
+
+        Args:
+            model_path: Path to the saved model directory
+        """
+        if os.path.exists(model_path):
+            try:
+                print(f"Loading pre-trained model from {model_path}...")
+                self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+                self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+                self.model.to(self.device)
+                print("✅ Pre-trained model loaded successfully!")
+            except Exception as e:
+                print(f"⚠️  Could not load model from {model_path}: {e}")
+                print("Model will need to be trained before making predictions.")
+        else:
+            print(f"No pre-trained model found at {model_path}")
+            print("Model will need to be trained before making predictions.")
+
     def load_and_preprocess_data(self, labeled_samples=1000):
         """
         Load and preprocess the MedHallu dataset using only expert labeled data
