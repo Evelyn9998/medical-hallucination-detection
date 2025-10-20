@@ -421,7 +421,7 @@ class MedicalHallucinationDetector:
         print("  - Binary classification for hallucination detection")
         print("  - MedHallu dataset integration for medical accuracy")
         print("="*60)
-    
+        
     def evaluate_model(self, test_texts, test_labels, model_path=None):
         """
         Evaluate the trained model on test data
@@ -455,14 +455,14 @@ class MedicalHallucinationDetector:
                 labels = batch['labels'].to(self.device)
                 
                 outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
-                predictions = torch.argmax(outputs.logits, dim=-1)
                 probs = torch.softmax(outputs.logits, dim=-1)
+                predictions = torch.argmax(probs, dim=-1)
                 
                 all_predictions.extend(predictions.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
                 all_probs.extend(probs.cpu().numpy()[:, 1])  # Probability of hallucination
         
-        # Calculate metrics
+        # Basic assessment results
         accuracy = accuracy_score(all_labels, all_predictions)
         precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='binary')
         auc = roc_auc_score(all_labels, all_probs)
@@ -475,15 +475,114 @@ class MedicalHallucinationDetector:
             'auc': auc
         }
         
-        # Print results
-        print("\n=== Evaluation Results ===")
+        print("\n=== Evaluation Results (Default threshold = 0.5) ===")
         for metric, value in metrics.items():
             print(f"{metric.capitalize()}: {value:.4f}")
         
+        # Threshold sensitivity analysis
+        print("\n=== Threshold Optimization ===")
+        thresholds = np.linspace(0.4, 0.75, 8)
+        results = {'threshold': [], 'precision': [], 'recall': [], 'f1': [], 'accuracy': []}
+
+        for t in thresholds:
+            preds = (np.array(all_probs) > t).astype(int)
+            acc = accuracy_score(all_labels, preds)
+            prec, rec, f1_score, _ = precision_recall_fscore_support(all_labels, preds, average='binary')
+            
+            print(f"Threshold {t:.2f} | Acc: {acc:.4f} | Prec: {prec:.4f} | Rec: {rec:.4f} | F1: {f1_score:.4f}")
+            
+            results['threshold'].append(t)
+            results['precision'].append(prec)
+            results['recall'].append(rec)
+            results['f1'].append(f1_score)
+            results['accuracy'].append(acc)
+
+        # Plot the Precision–Recall–F1 curve
+        plt.figure(figsize=(8, 6))
+        plt.plot(results['threshold'], results['precision'], marker='o', label='Precision')
+        plt.plot(results['threshold'], results['recall'], marker='o', label='Recall')
+        plt.plot(results['threshold'], results['f1'], marker='o', label='F1-score')
+        plt.plot(results['threshold'], results['accuracy'], marker='o', label='Accuracy', linestyle='--')
+        plt.title("Threshold Optimization Curves")
+        plt.xlabel("Threshold")
+        plt.ylabel("Score")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
         # Plot confusion matrix
         self._plot_confusion_matrix(all_labels, all_predictions)
         
         return metrics, all_predictions, all_probs
+
+
+    # def evaluate_model(self, test_texts, test_labels, model_path=None):
+    #     """
+    #     Evaluate the trained model on test data
+        
+    #     Args:
+    #         test_texts, test_labels: Test data
+    #         model_path: Path to saved model (if None, uses current model)
+            
+    #     Returns:
+    #         Dictionary of evaluation metrics
+    #     """
+    #     if model_path:
+    #         self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+    #         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+    #         self.model.to(self.device)
+        
+    #     # Create test dataset
+    #     test_dataset = MedHalluDataset(test_texts, test_labels, self.tokenizer, self.max_length)
+    #     test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+        
+    #     # Evaluate
+    #     self.model.eval()
+    #     all_predictions = []
+    #     all_labels = []
+    #     all_probs = []
+        
+    #     with torch.no_grad():
+    #         for batch in tqdm(test_loader, desc="Evaluating"):
+    #             input_ids = batch['input_ids'].to(self.device)
+    #             attention_mask = batch['attention_mask'].to(self.device)
+    #             labels = batch['labels'].to(self.device)
+                
+    #             outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+    #             # predictions = torch.argmax(outputs.logits, dim=-1)
+    #             # probs = torch.softmax(outputs.logits, dim=-1)
+    #             probs = torch.softmax(outputs.logits, dim=-1)
+    #             hallucination_probs = probs[:, 1]  
+    #             threshold = 0.6  # ← change threshold here
+    #             predictions = (hallucination_probs > threshold).long()
+                
+    #             all_predictions.extend(predictions.cpu().numpy())
+    #             all_labels.extend(labels.cpu().numpy())
+    #             all_probs.extend(probs.cpu().numpy()[:, 1])  # Probability of hallucination
+        
+    #     # Calculate metrics
+    #     accuracy = accuracy_score(all_labels, all_predictions)
+    #     precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='binary')
+    #     auc = roc_auc_score(all_labels, all_probs)
+        
+    #     metrics = {
+    #         'accuracy': accuracy,
+    #         'precision': precision,
+    #         'recall': recall,
+    #         'f1': f1,
+    #         'auc': auc
+    #     }
+        
+    #     # Print results
+    #     print("\n=== Evaluation Results ===")
+    #     for metric, value in metrics.items():
+    #         print(f"{metric.capitalize()}: {value:.4f}")
+        
+    #     # Plot confusion matrix
+    #     self._plot_confusion_matrix(all_labels, all_predictions)
+        
+    #     return metrics, all_predictions, all_probs
     
     def _plot_confusion_matrix(self, y_true, y_pred):
         """Plot confusion matrix"""
