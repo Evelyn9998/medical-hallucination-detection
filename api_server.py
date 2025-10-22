@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Flask API Server for Medical Hallucination Detection
-English Version - Simple and Fast Integration
+Simple and Fast Integration
 """
 
 from flask import Flask, request, jsonify
