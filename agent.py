@@ -2,6 +2,7 @@ import sys
 sys.path.append('.')
 
 from test_model import MedicalHallucinationTester
+from physiology_check import physiological_plausibility_check
 
 class HallucinationDetectionAgent:
     """
@@ -17,18 +18,26 @@ class HallucinationDetectionAgent:
         """
         self.tester = MedicalHallucinationTester(model_path)
 
+    # def detect(self, question, answer):
+    #     """
+    #     Detect if the given answer is a hallucination for the question.
+
+    #     Args:
+    #         question (str): The medical question.
+    #         answer (str): The answer to evaluate.
+
+    #     Returns:
+    #         dict: Detection result including prediction, confidence, and recommendation.
+    #     """
+    #     return self.tester.predict_single(question, answer)
+
+
     def detect(self, question, answer):
-        """
-        Detect if the given answer is a hallucination for the question.
+      result = self.tester.predict_single(question, answer)  # your existing model prediction
+      physiology_result = physiological_plausibility_check(question, answer)
+      result.update(physiology_result)
+      return result
 
-        Args:
-            question (str): The medical question.
-            answer (str): The answer to evaluate.
-
-        Returns:
-            dict: Detection result including prediction, confidence, and recommendation.
-        """
-        return self.tester.predict_single(question, answer)
 
     def batch_detect(self, qa_pairs):
         """
