@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple Test Client for Medical Hallucination Detection API
-English Version - Quick Testing
+Quick Testing
 """
 
 import requests
