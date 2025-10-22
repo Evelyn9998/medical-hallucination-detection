@@ -64,16 +64,16 @@ def start_api_server():
     """Start the API server"""
     print("\n🚀 Starting API server...")
     
-    # Check if api_server_en.py exists
-    if not Path("api_server_en.py").exists():
-        print("❌ ERROR: api_server_en.py not found!")
+    # Check if api_server.py exists
+    if not Path("api_server.py").exists():
+        print("❌ ERROR: api_server.py not found!")
         print("💡 Make sure you have the API server file in the current directory")
         return None
     
     try:
         # Start the server process
         process = subprocess.Popen([
-            sys.executable, "api_server_en.py"
+            sys.executable, "api_server.py"
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         # Wait for server to start
@@ -170,8 +170,8 @@ response = requests.post('http://localhost:5000/detect',
 print(response.json())''')
     
     print("\n3. Test with our test client:")
-    print("   python test_client_en.py")
-    print("   python test_client_en.py --interactive")
+    print("   python test_client.py")
+    print("   python test_client.py --interactive")
 
 def main():
     """Main function - Quick start process"""
