@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Quick Start Script for Medical Hallucination Detection API
-English Version - Get Running in 3 Steps
+Get Running in 3 Steps
 """
 
 import os
