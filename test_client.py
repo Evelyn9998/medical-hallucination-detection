@@ -179,7 +179,7 @@ class APITester:
         # Test health first
         if not self.test_health():
             print("\n❌ Health check failed. Make sure the API server is running!")
-            print("💡 Start the server with: python api_server_en.py")
+            print("💡 Start the server with: python api_server.py")
             return
         
         # Run detection tests
@@ -188,7 +188,7 @@ class APITester:
         
         print("\n🎉 All tests completed!")
         print("\n💡 Want to try interactive testing? Run:")
-        print("   python test_client_en.py --interactive")
+        print("   python test_client.py --interactive")
 
 def main():
     """Main function"""

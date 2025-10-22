@@ -80,7 +80,7 @@ def start_api_server():
         print("⏳ Waiting for server to start...")
         for i in range(20):  # Wait up to 20 seconds
             try:
-                response = requests.get("http://localhost:5000/health", timeout=2)
+                response = requests.get("http://localhost:5001/health", timeout=2)
                 if response.status_code == 200:
                     print("✅ API server started successfully!")
                     return process
@@ -104,7 +104,7 @@ def test_api():
     
     try:
         # Test health endpoint
-        health_response = requests.get("http://localhost:5000/health", timeout=5)
+        health_response = requests.get("http://localhost:5001/health", timeout=5)
         if health_response.status_code != 200:
             print("❌ Health check failed")
             return False
@@ -116,7 +116,7 @@ def test_api():
         }
         
         response = requests.post(
-            "http://localhost:5000/detect",
+            "http://localhost:5001/detect",
             json=test_data,
             timeout=10
         )
@@ -144,14 +144,14 @@ def show_usage_examples():
     print("=" * 60)
     
     print("\n🌐 API Endpoints:")
-    print("   • Health Check: http://localhost:5000/health")
-    print("   • Documentation: http://localhost:5000/api/docs")
-    print("   • Single Detection: POST http://localhost:5000/detect")
-    print("   • Batch Detection: POST http://localhost:5000/batch_detect")
+    print("   • Health Check: http://localhost:5001/health")
+    print("   • Documentation: http://localhost:5001/api/docs")
+    print("   • Single Detection: POST http://localhost:5001/detect")
+    print("   • Batch Detection: POST http://localhost:5001/batch_detect")
     
     print("\n📝 Quick Test Commands:")
     print("\n1. Test with curl:")
-    print('''curl -X POST http://localhost:5000/detect \\
+    print('''curl -X POST http://localhost:5001/detect \\
   -H "Content-Type: application/json" \\
   -d '{
     "question": "What causes high blood pressure?",
@@ -161,7 +161,7 @@ def show_usage_examples():
     print("\n2. Test with Python:")
     print('''import requests
 
-response = requests.post('http://localhost:5000/detect', 
+response = requests.post('http://localhost:5001/detect',
     json={
         'question': 'What is hypertension?',
         'answer': 'Hypertension is persistently high blood pressure.'
@@ -201,7 +201,7 @@ def main():
     # Step 5: Show usage examples
     show_usage_examples()
     
-    print(f"\n🎉 Setup complete! Your API is running at http://localhost:5000")
+    print(f"\n🎉 Setup complete! Your API is running at http://localhost:5001")
     print("🛑 Press Ctrl+C to stop the server")
     
     try:
