@@ -1,6 +1,7 @@
 # Model files (too large for Git)
 *.safetensors
 *.bin
+*.zip
 med_hallucination_model/
 checkpoint-*/
 
