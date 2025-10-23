@@ -41,8 +41,7 @@ class ExpertReviewer:
 
             return (
                 "⚠️  Automatic detection flagged this answer for review.\n"
-                f"- Status: Pending human expert evaluation.\n"
-                "Please forward this case to a qualified medical reviewer."
+                f"Status: Pending human expert evaluation.\n"
             )
         else:
             return (
