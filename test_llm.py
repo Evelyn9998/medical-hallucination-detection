@@ -25,11 +25,32 @@ def medical_qa_with_detection(question):
         json={'question': question, 'answer': answer})
     result = detection.json()
     
-    if result['is_hallucination'] or result.get('confidence', 1.0) < 0.7:
-        return f"⚠️ REVIEW REQUIRED\n\nAnswer: {answer}\n\nConfidence: {result.get('confidence', 'N/A'):.3f}\nRecommendation: {result['recommendation']}\nExpert Opinion: {result.get('expert_opinion', 'Pending review')}"
+    if result['is_hallucination'] or result.get('confidence', 1.0) < 0.7 or result.get('physiology_flag', False):
+        return (
+            f"⚠️ REVIEW REQUIRED\n\n"
+            f"Question: {question}\n"
+            f"Answer: {answer}\n\n"
+            f"Is Hallucination: {result['is_hallucination']}\n"
+            f"Confidence: {result.get('confidence', 'N/A'):.3f}\n"
+            f"Physiology Flag: {result.get('physiology_flag')}\n"
+            f"Physiology Check: {result.get('note', 'No physiology note')}\n"
+            f"Recommendation: {result.get('recommendation')}\n"
+            f"Expert Opinion: {result.get('expert_opinion', 'Pending review')}\n"
+        )
     else:
-        return f"✅ SAFE ANSWER\n\nAnswer: {answer}\n\nConfidence: {result.get('confidence', 'N/A'):.3f}\nExpert Opinion: {result.get('expert_opinion', 'No review needed')}\nRecommendation: {result['recommendation']}"
+        return (
+            f"✅ SAFE ANSWER\n\n"
+            f"Question: {question}\n"
+            f"Answer: {answer}\n\n"
+            f"Is Hallucination: {result['is_hallucination']}\n"
+            f"Confidence: {result.get('confidence', 'N/A'):.3f}\n"
+            f"Physiology Flag: {result.get('physiology_flag')}\n"
+            f"Physiology Check: {result.get('note', 'Physiologically plausible')}\n"
+            f"Expert Opinion: {result.get('expert_opinion', 'No review needed')}\n"
+            f"Recommendation: {result['recommendation']}\n"
+        )
 
 # Usage
-answer = medical_qa_with_detection("What is diabetes?")
+answer = medical_qa_with_detection("What happens to heart rate during exercise?")
 print(answer)
+

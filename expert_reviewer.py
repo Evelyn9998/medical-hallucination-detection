@@ -40,8 +40,8 @@ class ExpertReviewer:
             self.pending_reviews.append(review_item)
 
             return (
-                "⚠️  Automatic detection flagged this answer for review.\n"
-                f"Status: Pending human expert evaluation.\n"
+                "⚠️ Automatic detection flagged this answer for review.\n"
+                f"Status: Pending human expert evaluation."
             )
         else:
             return (

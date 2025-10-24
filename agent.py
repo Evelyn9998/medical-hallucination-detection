@@ -1,4 +1,5 @@
 import sys
+from physiology_check import physiological_plausibility_check
 sys.path.append('.')
 
 from test_model import MedicalHallucinationTester
@@ -33,8 +34,8 @@ class HallucinationDetectionAgent:
             dict: Detection result including prediction, confidence, recommendation, and expert review info.
         """
         detection = self.tester.predict_single(question, answer)
+        physiology_result = physiological_plausibility_check(question, answer)
 
-        # Step 3: 判断是否需要专家审核
         if detection["is_hallucination"] or detection["confidence"] < 0.7:
             expert_opinion = self.reviewer.review(question, answer, detection)
             result = {
@@ -50,6 +51,8 @@ class HallucinationDetectionAgent:
                 "expert_opinion": "✅ Confidence sufficient, no review needed",
                 "recommendation": "Answer considered safe"
             }
+
+        result.update(physiology_result)
 
         return result
 
