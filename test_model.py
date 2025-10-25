@@ -1,3 +1,14 @@
+# Reena: 
+import torch.nn.functional as F
+from captum.attr import IntegratedGradients
+import shap
+from lime.lime_text import LimeTextExplainer
+import spacy
+from IPython.display import display, HTML
+
+nlp = spacy.load("en_core_sci_sm")
+# end
+
 #!/usr/bin/env python3
 """
 Test script for the trained Medical Hallucination Detection model
@@ -35,6 +46,186 @@ class MedicalHallucinationTester:
             print(f"Error loading model: {e}")
             print("Make sure you have trained and saved the model first!")
             raise
+
+    # Reena
+    # def explain_with_tokens(self, question, answer, target_label=1, top_k=10):
+    #     """
+    #     Explain prediction with token-level attributions using Captum Integrated Gradients.
+    #     """
+    #     text = f"Question: {question} Answer: {answer}"
+
+    #     # Tokenize input
+    #     encoding = self.tokenizer(
+    #         text,
+    #         return_tensors='pt',
+    #         truncation=True,
+    #         padding='max_length',
+    #         max_length=self.max_length
+    #     )
+
+    #     input_ids = encoding['input_ids'].to(self.device)
+    #     attention_mask = encoding['attention_mask'].to(self.device)
+
+    #     # Define proper forward function
+    #     def forward_func(input_ids):
+    #         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+    #         probs = F.softmax(outputs.logits, dim=-1)
+    #         return probs[:, target_label]  # Return hallucination probability
+
+    #     ig = IntegratedGradients(forward_func)
+
+    #     # Compute attributions
+    #     attributions, delta = ig.attribute(
+    #         input_ids,
+    #         n_steps=20,
+    #         return_convergence_delta=True
+    #     )
+
+    #     # Sum across embedding dimensions
+    #     attributions_sum = attributions.sum(dim=-1).squeeze(0)
+
+    #     # Normalize and pair with tokens
+    #     tokens = self.tokenizer.convert_ids_to_tokens(input_ids.squeeze(0))
+    #     scores = attributions_sum / torch.norm(attributions_sum)
+    #     ranked = sorted(zip(tokens, scores.tolist()), key=lambda x: abs(x[1]), reverse=True)
+
+    #     print("\n🩺 Top contributing tokens:")
+    #     for token, score in ranked[:top_k]:
+    #         print(f"{token:15s} -> {score:.4f}")
+
+    #     return ranked
+
+
+    # def explain_with_shap(self, question, answer):
+    #     """
+    #     Explain prediction using SHAP (model-agnostic).
+    #     Generates a visual explanation for token contributions.
+    #     """
+    #     text = f"Question: {question} Answer: {answer}"
+
+    #     # Define a prediction function that takes raw text input
+    #     def f(texts):
+    #         encodings = self.tokenizer(
+    #             texts,
+    #             return_tensors='pt',
+    #             truncation=True,
+    #             padding=True,
+    #             max_length=self.max_length
+    #         ).to(self.device)
+    #         with torch.no_grad():
+    #             outputs = self.model(**encodings)
+    #             probs = F.softmax(outputs.logits, dim=-1)
+    #         return probs.cpu().numpy()
+
+    #     # ✅ Pass only a list of strings, not a tokenizer
+    #     explainer = shap.Explainer(f)
+    #     shap_values = explainer([text])
+
+    #     print("\n🧩 SHAP explanation generated. Opening interactive plot...")
+    #     shap.plots.text(shap_values[0])
+
+
+    # def explain_with_lime(self, question, answer):
+    #     """
+    #     Explain prediction using LIME (local interpretable model-agnostic explanation).
+    #     """
+    #     text = f"Question: {question} Answer: {answer}"
+
+    #     # Create LIME text explainer
+    #     explainer = LimeTextExplainer(class_names=["Not Hallucination", "Hallucination"])
+
+    #     def predict_proba(texts):
+    #         encodings = self.tokenizer(
+    #             texts,
+    #             return_tensors='pt',
+    #             truncation=True,
+    #             padding=True,
+    #             max_length=self.max_length
+    #         ).to(self.device)
+    #         with torch.no_grad():
+    #             outputs = self.model(**encodings)
+    #             probs = F.softmax(outputs.logits, dim=-1)
+    #         return probs.cpu().numpy()
+
+    #     # explanation = explainer.explain_instance(text, predict_proba, num_features=10)
+    #     # print("\n🧩 LIME explanation:")
+    #     # print(explanation.as_list())  # prints words + weights
+    #     # explanation.show_in_notebook(text=True)
+    #     explanation = explainer.explain_instance(text, predict_proba, num_features=10)
+
+    #     print("\n🧩 LIME explanation (Top words):")
+    #     for word, weight in explanation.as_list():
+    #         print(f"{word:15s} -> {weight:.4f}")
+
+    #     # For Jupyter or Colab, also display HTML
+    #     try:
+    #         from IPython.display import display
+    #         display(explanation.show_in_notebook(text=True))
+    #     except Exception:
+    #         pass
+    def explain_with_lime_medical(self, question, answer, num_features=10):
+      """
+      Explain prediction using LIME, highlighting medical entities.
+      Non-evidence-based tokens contributing to hallucination are highlighted.
+      """
+      text = f"Question: {question} Answer: {answer}"
+
+      # Create LIME text explainer
+      explainer = LimeTextExplainer(class_names=["Not Hallucination", "Hallucination"])
+
+      # Prediction function for LIME
+      def predict_proba(texts):
+          encodings = self.tokenizer(
+              texts,
+              return_tensors='pt',
+              truncation=True,
+              padding=True,
+              max_length=self.max_length
+          ).to(self.device)
+          with torch.no_grad():
+              outputs = self.model(**encodings)
+              probs = torch.softmax(outputs.logits, dim=-1)
+          return probs.cpu().numpy()
+
+      # Generate LIME explanation
+      explanation = explainer.explain_instance(text, predict_proba, num_features=num_features)
+
+      # Extract top contributing tokens
+      top_tokens = [word for word, weight in explanation.as_list() if abs(weight) > 0]
+
+      # Extract medical entities using scispaCy
+      doc = nlp(text)
+      medical_entities = [ent.text for ent in doc.ents]
+
+      # Separate medical vs non-medical contributors
+      medical_contrib = [t for t in top_tokens if t in medical_entities]
+      non_medical_contrib = [t for t in top_tokens if t not in medical_entities]
+
+      # print("\n🧩 LIME explanation (Top words):")
+      # for word, weight in explanation.as_list():
+      #     print(f"{word:15s} -> {weight:.4f}")
+
+      if medical_contrib:
+          print("\n🔍 Medical entities contributing to hallucination risk:", medical_contrib)
+      if non_medical_contrib:
+          print("⚠️ Non-evidence-based terms contributing to hallucination risk:", non_medical_contrib)
+      
+      
+
+      # # Optional: interactive colored visualization for notebooks
+      # html_str = ""
+      # for word, weight in explanation.as_list():
+      #     if word in medical_contrib:
+      #         color = "rgba(0,255,0,0.3)"  # evidence-based medical term
+      #     elif word in non_medical_contrib:
+      #         color = "rgba(255,0,0,0.3)"  # hallucination contributor
+      #     else:
+      #         color = "rgba(200,200,200,0.2)"
+      #     html_str += f"<span style='background-color:{color}; padding:2px; margin:1px'>{word}</span> "
+
+      # display(HTML(f"<div style='font-size:16px; line-height:1.6'>{html_str}</div>"))
+
+    # end
     
     def predict_single(self, question, answer, return_probability=True):
         """
@@ -216,10 +407,43 @@ def main():
                 break
             
             result = tester.predict_single(question, answer)
+
             
             print(f"\nResult: {'HALLUCINATION' if result['is_hallucination'] else 'NOT HALLUCINATION'}")
             print(f"Confidence: {result['confidence']:.3f}")
             print(f"Recommendation: {result['recommendation']}")
+
+            # Reena
+
+            # explain = input("Would you like to explain this prediction? (y/n): ").strip().lower()
+            # if explain == 'y':
+            #     print("\nChoose method:")
+            #     print("1. Token-level Attribution (Captum)")
+            #     print("2. SHAP Explanation")
+            #     print("3. LIME Explanation")
+            #     choice = input("Enter choice (1/2/3): ").strip()
+
+            #     if choice == '1':
+            #         tester.explain_with_tokens(question, answer)
+            #     elif choice == '2':
+            #         tester.explain_with_shap(question, answer)
+            #     elif choice == '3':
+            #         tester.explain_with_lime(question, answer)
+            #     else:
+            #         print("Invalid choice.")
+            auto_explain = True
+            method_choice = "3"  # "1"=Captum, "2"=SHAP, "3"=LIME
+
+            if auto_explain:
+                print("\n🧠 Generating explanation...")
+                if method_choice == "1":
+                    tester.explain_with_tokens(question, answer)
+                elif method_choice == "2":
+                    tester.explain_with_shap(question, answer)
+                elif method_choice == "3":
+                    # tester.explain_with_lime(question, answer)
+                    tester.explain_with_lime_medical(question, answer)
+                # end
             
         except KeyboardInterrupt:
             print("\nExiting...")
