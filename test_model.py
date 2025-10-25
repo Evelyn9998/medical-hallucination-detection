@@ -1,7 +1,7 @@
 # Reena: 
 import torch.nn.functional as F
-from captum.attr import IntegratedGradients
-import shap
+# from captum.attr import IntegratedGradients
+# import shap
 from lime.lime_text import LimeTextExplainer
 import spacy
 from IPython.display import display, HTML
@@ -168,7 +168,7 @@ class MedicalHallucinationTester:
       Explain prediction using LIME, highlighting medical entities.
       Non-evidence-based tokens contributing to hallucination are highlighted.
       """
-      text = f"Question: {question} Answer: {answer}"
+      text = f"{question} {answer}"
 
       # Create LIME text explainer
       explainer = LimeTextExplainer(class_names=["Not Hallucination", "Hallucination"])
@@ -206,10 +206,28 @@ class MedicalHallucinationTester:
       #     print(f"{word:15s} -> {weight:.4f}")
 
       if medical_contrib:
-          print("\n🔍 Medical entities contributing to hallucination risk:", medical_contrib)
+          print("\n🔍 Medical entities contributing to hallucination prediction:", medical_contrib)
       if non_medical_contrib:
-          print("⚠️ Non-evidence-based terms contributing to hallucination risk:", non_medical_contrib)
+          print("⚠️ Non-evidence-based terms contributing to hallucination prediction:", non_medical_contrib)
       
+      if medical_contrib or non_medical_contrib:
+          print("\n🩺 Contextual medical explanation:")
+
+      if non_medical_contrib and medical_contrib:
+          print(f"\n 💬 The model flagged this as a HALLUCINATION mainly because of non-evidence-based terms like "
+                f"{', '.join([f'‘{w}’' for w in non_medical_contrib[:3]])}, "
+                f"\n even though some medical terms such as "
+                f"{', '.join([f'‘{w}’' for w in medical_contrib[:3]])} appeared.")
+      
+      elif non_medical_contrib:
+          print(f"\n 💬 The model flagged this as a HALLUCINATION mainly due to non-evidence-based terms like "
+                f"\n {', '.join([f'‘{w}’' for w in non_medical_contrib[:5]])}.")
+      
+      elif medical_contrib:
+          print(f"\n 💬 The model’s decision was influenced by medical terms like "
+                f"{', '.join([f'‘{w}’' for w in medical_contrib[:5]])}, "
+                f"\n which may indicate domain relevance but uncertain factual grounding.")
+
       
 
       # # Optional: interactive colored visualization for notebooks
